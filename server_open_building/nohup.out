@@ -1,0 +1,22 @@
+
+> application-name@0.0.1 start /home/wyliodrin/openBuilding
+> node app.js
+
+connect.multipart() will be removed in connect 3.0
+visit https://github.com/senchalabs/connect/wiki/Connect-3.0 for alternatives
+connect.limit() will be removed in connect 3.0
+Listening on port 9090
+datbase connection established
+
+> application-name@0.0.1 start /home/wyliodrin/openBuilding
+> node app.js
+
+connect.multipart() will be removed in connect 3.0
+visit https://github.com/senchalabs/connect/wiki/Connect-3.0 for alternatives
+connect.limit() will be removed in connect 3.0
+Listening on port 9090
+datbase connection established
+get
+[90mPOST /get_locations [32m200 [90m93ms - 974b[0m
+npm ERR! weird error 143
+npm ERR! not ok code 0
