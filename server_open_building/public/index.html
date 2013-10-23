@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+        <style type="text/css">
+            html { height: 100% }
+            body { height: 100%; margin: 0; padding: 0 }
+            #map-canvas { height: 100% }
+        </style>
+        <script src="http://code.jquery.com/jquery-1.10.1.min.js" type="text/javascript"></script>
+        <script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDZ0LnpERZeLc_ih7LCcVRQp0fvyMtbY1Q&sensor=true"></script>
+        <script type="text/javascript">
+            var map, image, newMarker;
+
+            function initialize() {
+                markers = new Array();
+                
+                var mapOptions = {
+                    zoom: 4,
+                    center: new google.maps.LatLng(44.441282, 26.081848),
+                    mapTypeId: google.maps.MapTypeId.ROADMAP
+                };
+
+                map = new google.maps.Map(document.getElementById('map-canvas'), mapOptions);
+
+                $.ajax({
+                    type: "POST",
+                    url: "http://openbuilding.ipworkshop.ro:8000/get_locations",
+                    processData: true,
+                    context: "application/json",
+                    success: function(data) {
+                        for (var i = 0; i < data.length; i++)
+                        {
+                            var marker = new google.maps.Marker({
+                                clickable: true,
+                                position: new google.maps.LatLng(data[i].latitude, data[i].longitude),
+                                map: map,
+                                icon: 'images/cladire_small.png',
+                                title: data[i].name,
+                                id: data[i].id
+                            });
+                            
+                            console.log(marker);
+                            
+                            google.maps.event.addListener(marker, 'click', function() {
+                                document.location = "draw.html?id=" + this.id;
+                            });
+                        }
+                    },
+                    error: function() {
+                        console.log("failure");
+                    }
+                });
+
+                //map.setCenter(beachMarker.getPosition());
+
+            }
+
+            function add_marker()
+            {
+                newMarker = new google.maps.Marker({
+                    clickable: true,
+                    position: new google.maps.LatLng(map.getCenter()),
+                    map: map,
+                    icon: 'images/cladire_small.png',
+                    draggable: true
+                });
+                google.maps.event.trigger(map, 'resize');
+            }
+
+            function done_marker()
+            {
+
+                $.ajax({
+                    type: "post",
+                    url: "http://openbuilding.ipworkshop.ro:8000/add_location",
+                    processData: true,
+                    context: "application/json",
+                    data: {name: "name", latitude: newMarker.position.lb, longitude: newMarker.position.mb},
+                    success: function(data) {
+                        //console.log(data);
+
+                        newMarker.title = "name";
+                        newMarker.id = data.id;
+                        newMarker.draggable = false;
+                        google.maps.event.addListener(newMarker, 'click', function() {
+                            document.location = "draw.html?id=" + newMarker.id;
+                        });
+                        google.maps.event.trigger(map, 'resize');
+
+                    },
+                    error: function() {
+                        console.log("failure");
+                    }
+                });
+            }
+            google.maps.event.addDomListener(window, 'load', initialize);
+        </script>
+    </head>
+    <body>
+        <div id="map-canvas"></div>
+        <input type="button" onclick="add_marker();" value="add"/>
+        <input type="button" onclick="done_marker();" value="done"/>
+        <input type="text" onkeyup="" />
+    </body>
+</html>

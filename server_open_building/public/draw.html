@@ -1,0 +1,585 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta name="viewport" content="initial-scale=1.0, user-scalable=no" />
+        <style type="text/css">
+            html { height: 100% }
+            body { height: 100%; margin: 0; padding: 0 }
+
+        </style>
+
+        <script src="http://code.jquery.com/jquery-1.10.1.min.js"></script>
+
+
+    </head>
+    <body>
+        <canvas id="myCanvas" width="700" height="500"  onmousedown="startMoving(event);" onmouseup="endMoving();" onmousemove="moveStuff(event);" style="border:1px solid #000000;"></canvas> 
+        <input type="button" onclick="endMovingObject()" value="magic happens"/>
+        <input type="button" onclick="" value="add"/>
+        <input type="button" onclick="endMoving()" value="edit"/>
+        <img id="up" onclick="nextLvl()" onmousedown="pressNextLvl()" onmouseup="unpressNextLvl()" src="images/next_lvl.png">
+        <div id="debugger"></div>
+        <div id="debugger2"></div>
+        <img height="20" id="door" width="20" src="images/door.png" />
+        <img height="20" id="exitDoor" width="20" src="images/exit.png" />
+        <img height="20" id="stairs_up" width="20" src="images/scari_sus.png" />
+        <img height="20" id="stairs_down" width="20" src="images/scari_jos.png" />
+        <img height="20" id="stairs_both" width="20" src="images/scari_b.png" />
+        <img height="20" id="egde" width="20" src="images/pylon.png" />
+
+        <script type="text/javascript">
+            function getUrlVars() {
+                var vars = {};
+                var parts = window.location.href.replace(/[?&]+([^=&]+)=([^&]*)/gi, function(m, key, value) {
+                    vars[key] = value;
+                });
+                return vars;
+            }
+
+            function sqr(x) {
+                return x * x;
+            }
+
+            function dist22(v, w) {
+                return sqr(v.x - w.x) + sqr(v.y - w.y);
+            }
+
+            function distToSegmentSquared(p, v, w) {
+                var l2 = dist22(v, w);
+                if (l2 == 0)
+                    return dist22(p, v);
+                var t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+                if (t < 0)
+                    return dist22(p, v);
+                if (t > 1)
+                    return dist22(p, w);
+                return dist22(p, {x: v.x + t * (w.x - v.x),
+                    y: v.y + t * (w.y - v.y)});
+            }
+
+            function distToSegment(p, v, w) {
+                return Math.sqrt(distToSegmentSquared(p, v, w));
+            }
+
+            var objects, initialX, initialY, frame, scaleFactor, moveFrame, MAX_SCALE_FACTOR, MIN_SCALE_FACTOR, height, width, moveObject, selectedObject, blockMovement, selectedEdge, holdingEdge, clickedEdge;
+
+
+            $(document).ready(initialize);
+            $(document).on("mousewheel DOMMouseScroll", function(e) {
+                zoomFrame(e);
+            });
+
+            //initialize grid
+            function initialize()
+            {
+                holdingEdge = false;
+                selectedEdge = 0;
+                scaleFactor = 20;
+                moveFrame = false;
+                MAX_SCALE_FACTOR = 100;
+                MIN_SCALE_FACTOR = 5;
+                height = 500;
+                width = 700;
+                objects = new Array();
+                frame = new Object();
+                frame = {X1: 0, X2: width / scaleFactor, Y1: 0, Y2: height / scaleFactor};
+                moveObject = false;
+                clickedEdge = false;
+                //draw everything
+                //drawGrid();
+                //get objects from server
+
+                $.ajax({
+                    type: "post",
+                    url: "http://openbuilding.ipworkshop.ro:8000/get_floor",
+                    processData: true,
+                    context: "application/json",
+                    data: {locationID: getUrlVars()["id"], nr: 0},
+                    success: function(data) {
+                        //console.log(data);
+                        if (data[0].items === undefined)
+                        {
+                            //edit mode
+                        }
+                        else
+                        {
+                            objects = data[0].items;
+                            //console.log(objects);
+                            drawObjects();
+                        }
+                    },
+                    error: function() {
+                        console.log("failure");
+                    }
+                });
+            }
+
+            function unpressNextLvl()
+            {
+                $("#up").attr("src", "images/next_lvl.png");
+            }
+
+            function pressNextLvl()
+            {
+                $("#up").attr("src", "images/next_lvl_p.png");
+            }
+
+            function nextLvl()
+            {
+
+
+            }
+
+            function drawObjects()
+            {
+                for (var i = 0; i < objects.length; i++)
+                {
+                    //console.log(objects[i]);
+                    if (objects[i].objType == "wall")
+                        drawWall(objects[i].wallInfo);
+                    else
+                    if (objects[i].objType == "door")
+                        drawDoor(objects[i].doorInfo);
+                    else
+                    if (objects[i].objType == "label")
+                        drawLabel(objects[i].labelInfo);
+                    else
+                    if (objects[i].objType == "stairs")
+                        drawStairs(objects[i].stairInfo);
+                }
+
+            }
+
+            //event on dragging the frame
+            function moveStuff(event)
+            {
+                if (moveFrame == true)
+                {
+                    //new values for frame
+                    frame.X1 = frame.X1 + (initialX - event.clientX) / scaleFactor;
+                    frame.X2 = frame.X2 + (initialX - event.clientX) / scaleFactor;
+                    frame.Y1 = frame.Y1 + (initialY - event.clientY) / scaleFactor;
+                    frame.Y2 = frame.Y2 + (initialY - event.clientY) / scaleFactor;
+
+                    initialX = event.clientX;
+                    initialY = event.clientY;
+
+                    //clear canvas
+                    var c = document.getElementById("myCanvas");
+                    var ctx = c.getContext("2d");
+                    ctx.beginPath();
+                    ctx.clearRect(0, 0, width, height);
+
+                    //draw everything
+                    //drawGrid();
+                    drawObjects();
+                }
+                else
+                if (moveObject == true)
+                {
+                    if (holdingEdge == true && clickedEdge == true)
+                    {
+if (objects[editedObject].objType == "wall")
+{
+if (selectedEdge == 1)
+{
+    if ((Math.round(event.clientX / scaleFactor - frame.X1) != objects[editedObject].wallInfo.x1) || (Math.round(event.clientY / scaleFactor - frame.Y1) != objects[editedObject].wallInfo.y1))
+    {
+        objects[editedObject].wallInfo.x1 = Math.round((event.clientX / scaleFactor) + frame.X1);
+        objects[editedObject].wallInfo.y1 = Math.round((event.clientY / scaleFactor) + frame.Y1);
+        
+        console.log()
+        
+        var c = document.getElementById("myCanvas");
+        var ctx = c.getContext("2d");
+        ctx.beginPath();
+        ctx.clearRect(0, 0, width, height);
+        drawGrid();
+        drawObjects();
+    } 
+}
+else
+if (selectedEdge == 2)
+{
+    if ((Math.round(event.clientX / scaleFactor - frame.X1) != objects[editedObject].wallInfo.x2) || (Math.round(event.clientY / scaleFactor - frame.Y1) != objects[editedObject].wallInfo.y2))
+    {
+        objects[editedObject].wallInfo.x2 = Math.round((event.clientX / scaleFactor) + frame.X1);
+        objects[editedObject].wallInfo.y2 = Math.round((event.clientY / scaleFactor) + frame.Y1);
+    
+        var c = document.getElementById("myCanvas");
+        var ctx = c.getContext("2d");
+        ctx.beginPath();
+        ctx.clearRect(0, 0, width, height);
+        drawGrid();
+        drawObjects();
+    }   
+}
+}
+else
+if (objects[editedObject].objType == "stair")
+{
+    objects[editedObject].stairInfo.x = (event.clientX / scaleFactor + frame.X1);
+    objects[editedObject].stairInfo.y = (event.clientY / scaleFactor + frame.Y1);
+        
+    var c = document.getElementById("myCanvas");
+    var ctx = c.getContext("2d");
+    ctx.beginPath();
+    ctx.clearRect(0, 0, width, height);
+    drawGrid();
+    drawObjects();
+}
+else
+if (objects[editedObject].objType == "door")
+{
+    objects[editedObject].doorInfo.x = (event.clientX / scaleFactor + frame.X1);
+    objects[editedObject].doorInfo.y = (event.clientY / scaleFactor + frame.Y1);
+        
+    var c = document.getElementById("myCanvas");
+    var ctx = c.getContext("2d");
+    ctx.beginPath();
+    ctx.clearRect(0, 0, width, height);
+    drawGrid();
+    drawObjects();
+}
+else
+if (objects[editedObject].objType == "label")
+{
+    objects[editedObject].labelInfo.x = (event.clientX / scaleFactor + frame.X1);
+    objects[editedObject].labelInfo.y = (event.clientY / scaleFactor + frame.Y1);
+        
+    var c = document.getElementById("myCanvas");
+    var ctx = c.getContext("2d");
+    ctx.beginPath();
+    ctx.clearRect(0, 0, width, height);
+    drawGrid();
+    drawObjects();
+}
+
+                    }
+                    else
+                    if (clickedEdge == true)
+                    {
+if (objects[editedObject].objType == "wall")
+{
+    dist1 = Math.sqrt(Math.pow(((objects[editedObject].wallInfo.x1 - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[editedObject].wallInfo.y1 - frame.Y1) * scaleFactor - event.clientY), 2));
+
+    dist2 = Math.sqrt(Math.pow(((objects[editedObject].wallInfo.x2 - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[editedObject].wallInfo.y2 - frame.Y1) * scaleFactor - event.clientY), 2));
+
+
+if (dist1 < dist2 && dist1 < 10)
+{
+    selectedEdge = 1;
+    holdingEdge = true;
+}
+else
+if (dist2 < dist1 && dist2 < 10)
+{
+    selectedEdge = 2;
+    holdingEdge = true;
+}
+else
+{
+    holdingEdge = false;
+}
+}
+else
+if (objects[editedObject].objType == "stair") 
+{
+    dist = Math.sqrt(Math.pow(((objects[editedObject].stairInfo.x - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[editedObject].stairInfo.y - frame.Y1) * scaleFactor - event.clientY), 2));   
+    if(dist < 10)
+        {
+            holdingEdge = true;
+        }
+}
+else
+if (objects[editedObject].objType == "door") 
+{
+    dist = Math.sqrt(Math.pow(((objects[editedObject].doorInfo.x - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[editedObject].doorInfo.y - frame.Y1) * scaleFactor - event.clientY), 2));   
+    if(dist < 10)
+        {
+            holdingEdge = true;
+        }        
+}
+else
+if (objects[editedObject].objType == "label") 
+{
+    dist = Math.sqrt(Math.pow(((objects[editedObject].labelInfo.x - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[editedObject].labelInfo.y - frame.Y1) * scaleFactor - event.clientY), 2));   
+    if(dist < 10)
+        {
+            holdingEdge = true;
+        }        
+}
+
+                    }
+                }
+            }
+
+
+            function startMoving(event)
+            {
+                if (moveObject == false)
+                {
+                    var dist;
+                    editedObject = -1;
+
+                    for (var i = 0; i < objects.length && objects[editedObject] === undefined; i++)
+                    {
+if (objects[i].objType == "wall")
+    dist = distToSegment({x: event.clientX, y: event.clientY}, {x: (objects[i].wallInfo.x1 - frame.X1) * scaleFactor, y: (objects[i].wallInfo.y1 - frame.Y1) * scaleFactor}, {x: (objects[i].wallInfo.x2 - frame.X1) * scaleFactor, y: (objects[i].wallInfo.y2 - frame.Y1) * scaleFactor});
+else
+if (objects[i].objType == "stair")
+    dist = Math.sqrt(Math.pow(((objects[i].stairInfo.x - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[i].stairInfo.y - frame.Y1) * scaleFactor - event.clientY), 2))
+else
+if (objects[i].objType == "door")
+    dist = Math.sqrt(Math.pow(((objects[i].doorInfo.x - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[i].doorInfo.y - frame.Y1) * scaleFactor - event.clientY), 2));
+else
+if (objects[i].objType == "label")
+    dist = Math.sqrt(Math.pow(((objects[i].labelInfo.x - frame.X1) * scaleFactor - event.clientX), 2) + Math.pow(((objects[i].labelInfo.y - frame.Y1) * scaleFactor - event.clientY), 2));
+
+
+                        if (dist < 5)
+                            editedObject = i;
+                    }
+
+
+                    if (editedObject >= 0)
+                    {
+
+                        moveObject = true;
+                        //console.log(objects[editedObject]);
+                        /*if (objects[editedObject].objType == "wall")
+                        {
+                            //draw its egdes
+                            var c = document.getElementById("myCanvas");
+                            var ctx = c.getContext("2d");
+                            ctx.beginPath();
+                            var img = document.getElementById("egde");
+
+                            var x = (objects[editedObject].wallInfo.x1 - frame.X1) * scaleFactor;
+                            var y = (objects[editedObject].wallInfo.y1 - frame.Y1) * scaleFactor;
+                            ctx.drawImage(img, x - 7, y - 7, scaleFactor / 2, scaleFactor / 2);
+
+                            ctx.beginPath();
+
+                            x = (objects[editedObject].wallInfo.x2 - frame.X1) * scaleFactor;
+                            y = (objects[editedObject].wallInfo.y2 - frame.Y1) * scaleFactor;
+                            ctx.drawImage(img, x - 7, y - 7, scaleFactor / 2, scaleFactor / 2);
+                        }
+                           */ 
+                    }
+                    else
+                    {
+                        moveFrame = true;
+                        initialX = event.clientX;
+                        initialY = event.clientY;
+                    }
+                }
+                else
+                {
+                    clickedEdge = true;
+                }
+
+            }
+
+            function endMoving()
+            {
+                moveFrame = false;
+                holdingEdge = false;
+                clickedEdge = false;
+            }
+
+            function endMovingObject()
+            {
+                moveFrame = false;
+                
+                holdingEdge = false;
+                clickedEdge = false;
+                moveObject = false;
+                
+                var c = document.getElementById("myCanvas");
+                var ctx = c.getContext("2d");
+                ctx.beginPath();
+                ctx.clearRect(0, 0, width, height);
+
+                //draw everything
+                drawGrid();
+                drawObjects();
+            }
+
+            //event on zooming the frame
+            function zoomFrame(event)
+            {
+                if(moveObject == false)
+                    {
+                var e = window.event || event; // old IE support
+                var delta = Math.max(-1, Math.min(1, (e.wheelDelta || -e.detail)));
+
+                oldScaleFactor = scaleFactor;
+
+                if (scaleFactor + delta * 3 > MIN_SCALE_FACTOR && scaleFactor + delta * 3 < MAX_SCALE_FACTOR)
+                    scaleFactor = scaleFactor + delta * 3;
+
+                if (oldScaleFactor != scaleFactor)
+                {
+                    //new values for frame
+                    ratioX = width / oldScaleFactor - width / scaleFactor;
+                    ratioY = height / oldScaleFactor - height / scaleFactor;
+
+                    frame.X1 = frame.X1 + ratioX / 2;
+                    frame.X2 = frame.X2 - ratioX / 2;
+                    frame.Y1 = frame.Y1 + ratioY / 2;
+                    frame.Y2 = frame.Y2 - ratioY / 2;
+
+                    //clear canvas
+                    var c = document.getElementById("myCanvas");
+                    var ctx = c.getContext("2d");
+                    ctx.beginPath();
+                            ctx.clearRect(0, 0, width, height);
+                            //draw everything
+                            //drawGrid();
+                            drawObjects();
+                        }
+                    }
+                }
+
+            //draw the grid
+            function drawGrid()
+            {
+                $("#debugger").html(frame.X1 + " " + frame.Y1 + " " + frame.X2 + " " + frame.Y2);
+
+                var iterator;
+                if (frame.X1 > 0)
+                    iterator = scaleFactor - ((frame.X1 * scaleFactor) % scaleFactor);
+                else
+                    iterator = ((frame.X1 * scaleFactor) % scaleFactor) * (-1);
+
+
+                var c = document.getElementById("myCanvas");
+                var ctx = c.getContext("2d");
+                ctx.beginPath();
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 1;
+
+
+                for (var i = iterator; i < width; i += scaleFactor)
+                {
+                    ctx.moveTo(i, 0);
+                    ctx.lineTo(i, height);
+                    ctx.stroke();
+                }
+
+
+                if (frame.Y1 > 0)
+                    iterator = scaleFactor - ((frame.Y1 * scaleFactor) % scaleFactor);
+                else
+                    iterator = ((frame.Y1 * scaleFactor) % scaleFactor) * (-1);
+
+
+                ctx.beginPath();
+
+
+                for (var i = iterator; i < height; i += scaleFactor)
+                {
+                    ctx.moveTo(0, i);
+                    ctx.lineTo(width, i);
+                    ctx.stroke();
+                }
+            }
+
+            function drawWall(wall)
+            {
+                //check if it is in frame
+                var x1, y1, x2, y2;
+
+                //verificare daca intra
+
+                x1 = (wall.x1 - frame.X1) * scaleFactor;
+                x2 = (wall.x2 - frame.X1) * scaleFactor;
+                y1 = (wall.y1 - frame.Y1) * scaleFactor;
+                y2 = (wall.y2 - frame.Y1) * scaleFactor;
+
+
+                //$("#debugger").html(frame.X1 + " " + frame.Y1 + " " + frame.X2 + " " + frame.Y2);
+                $("#debugger2").html(x1 + " " + x2 + " " + y1 + " " + y2);
+                //draw
+                var c = document.getElementById("myCanvas");
+                var ctx = c.getContext("2d");
+                ctx.beginPath();
+                ctx.lineWidth = 1;
+                ctx.strokeStyle = '#000000';
+                ctx.moveTo(x1, y1);
+                ctx.lineTo(x2, y2);
+                ctx.stroke();
+
+            }
+
+            function drawDoor(door)
+            {
+                var c = document.getElementById("myCanvas");
+                var ctx = c.getContext("2d");
+                ctx.beginPath();
+                var img;
+
+                if (door.direction == "outside")
+                    img = document.getElementById("exitDoor");
+                else
+                    img = document.getElementById("door");
+
+                var x, y;
+                x = (door.x - frame.X1) * scaleFactor;
+                y = (door.y - frame.Y1) * scaleFactor;
+
+
+
+                ctx.save();
+                ctx.translate(x, y);
+                ctx.rotate(door.angle * Math.PI / 180);
+                ctx.drawImage(img, -(scaleFactor / 2), -(scaleFactor), scaleFactor, scaleFactor * 2);
+                ctx.restore();
+            }
+
+            function drawLabel(label)
+            {
+                var c = document.getElementById("myCanvas");
+                var ctx = c.getContext("2d");
+
+                ctx.beginPath();
+
+                var x, y;
+                x = (label.x - frame.X1) * scaleFactor;
+                y = (label.y - frame.Y1) * scaleFactor;
+
+
+
+                ctx.font = (scaleFactor / 2).toString() + "px Georgia";
+                ctx.fillText(label.text, x, y);
+            }
+
+            function drawStairs(stairs)
+            {
+                var c = document.getElementById("myCanvas");
+                var ctx = c.getContext("2d");
+                ctx.beginPath();
+                var img;
+
+                if (stairs.stairType == "up")
+                    img = document.getElementById("stairs_up");
+                else
+                if (stairs.stairType == "down")
+                    img = document.getElementById("stairs_down");
+                else
+                if (stairs.stairType == "both")
+                    img = document.getElementById("stairs_both");
+
+
+                var x, y;
+                x = (stairs.x - frame.X1) * scaleFactor;
+                y = (stairs.y - frame.Y1) * scaleFactor;
+
+                ctx.drawImage(img, x - (scaleFactor), y - (1.5 * scaleFactor), scaleFactor * 2, scaleFactor * 3);
+
+            }
+
+        </script>
+    </body>
+</html>
