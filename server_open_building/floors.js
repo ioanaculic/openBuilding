@@ -47,7 +47,7 @@ function createFloor(floor)
 						});
 
 	var len = floor.items.length;
-	for (var i=0; (i<len && i <10); i++)
+	for (var i=0; i<len; i++)
 	{
 		console.log("i="+i);
 		var item = floor.items[i];
